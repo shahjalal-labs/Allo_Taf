@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "542916350318",
+    "project_id": "allo-taf",
+    "storage_bucket": "allo-taf.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:542916350318:android:65bd1b11267b69d49df17f",
+        "android_client_info": {
+          "package_name": "com.allotaf.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCCexHK_2O-Q0nITS44MibHqAQ_omxZI2A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

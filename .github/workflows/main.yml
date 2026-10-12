@@ -1,0 +1,120 @@
+name: Build Android App Bundle & APK
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  checks:
+    name: Run Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.0'
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Verify formatting
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Run tests
+        run: |
+          if [ -d "test" ]; then
+            flutter test
+          else
+            echo "ℹ️ No test directory found — skipping tests."
+          fi
+  build:
+    name: Build Signed App Bundle & APK
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.0'
+          channel: 'stable'
+          cache: true
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Compute version name and build number
+        id: version
+        run: |
+          # Read current version line, e.g. "version: 1.0.1+2"
+          CURRENT=$(grep '^version:' pubspec.yaml | sed 's/version: //')
+          VERSION_NAME=$(echo "$CURRENT" | cut -d'+' -f1)
+
+          # Bump the patch number (last segment of X.Y.Z)
+          MAJOR=$(echo "$VERSION_NAME" | cut -d'.' -f1)
+          MINOR=$(echo "$VERSION_NAME" | cut -d'.' -f2)
+          PATCH=$(echo "$VERSION_NAME" | cut -d'.' -f3)
+          NEW_PATCH=$((PATCH + 1))
+          NEW_VERSION_NAME="$MAJOR.$MINOR.$NEW_PATCH"
+
+          # Use the GitHub Actions run number as a strictly increasing build number
+          NEW_BUILD_NUMBER=${{ github.run_number }}
+
+          echo "Old version: $CURRENT"
+          echo "New version name: $NEW_VERSION_NAME"
+          echo "New build number: $NEW_BUILD_NUMBER"
+
+          echo "version_name=$NEW_VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "build_number=$NEW_BUILD_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Decode Android Keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/allotaf-keystore.jks
+
+      - name: Create key.properties
+        run: |
+          cat <<EOF > android/key.properties
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          storeFile=../allotaf-keystore.jks
+          EOF
+
+      - name: Build App Bundle (release)
+        run: |
+          flutter build appbundle --release \
+            --build-name=${{ steps.version.outputs.version_name }} \
+            --build-number=${{ steps.version.outputs.build_number }}
+
+      - name: Build APK (release)
+        run: |
+          flutter build apk --release --split-per-abi \
+            --build-name=${{ steps.version.outputs.version_name }} \
+            --build-number=${{ steps.version.outputs.build_number }}
+
+      - name: Upload App Bundle as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-bundle-v${{ steps.version.outputs.version_name }}-${{ steps.version.outputs.build_number }}
+          path: build/app/outputs/bundle/release/app-release.aab
+          retention-days: 30
+
+      - name: Upload APKs as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk-v${{ steps.version.outputs.version_name }}-${{ steps.version.outputs.build_number }}
+          path: build/app/outputs/flutter-apk/*.apk
+          retention-days: 30
